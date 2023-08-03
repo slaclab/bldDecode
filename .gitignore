@@ -1,0 +1,14 @@
+bldDecode/bldDecode
+*.so
+compile_commands.json
+.cache
+bldSend/bldSend
+O.Common
+O.linux-x86_64
+bin/
+lib/
+dbd/
+include/
+O.*
+RELEASE.local
+
