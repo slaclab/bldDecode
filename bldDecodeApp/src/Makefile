@@ -13,6 +13,9 @@ USR_CXXFLAGS += -std=c++11
 PROD += bldDecode
 
 bldDecode_SRCS += bldDecode.cc
+bldDecode_SRCS += util.cc
+bldDecode_SRCS += report.cc
+
 
 bldDecode_LIBS += pvxs Com
 INC += bld-proto.h

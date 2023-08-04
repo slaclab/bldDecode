@@ -14,45 +14,31 @@
 #include <vector>
 #include <algorithm>
 #include <cassert>
+#include <stdarg.h>
+
+#include <epicsTime.h>
 
 #include "pvxs/client.h"
 #include "pvxs/data.h"
 
+#include "util.h"
+#include "report.h"
 #include "bld-proto.h"
 
 #define MAXLINE 9000
 
-#define CHANNEL_SIZE 4
-
-#if __cplusplus >= 201103L
-#define CONSTEXPR constexpr
-#else
-#define CONSTEXPR static const
-#endif
-
 using ChannelType = pvxs::TypeCode::code_t;
 
+static void cleanup();
+
 static void print_data(uint32_t* data, size_t num, const std::vector<ChannelType>& formats, const std::vector<int>& channels);
-static int num_str_base(const char* str);
 static void usage();
 static std::vector<ChannelType> parse_channel_formats(const char* str);
 static std::vector<int> parse_channels(const char* str);
 static std::vector<int> parse_events(const char* str);
 static std::vector<ChannelType> read_channel_formats(const char* str);
 static void build_channel_list();
-static void extract_ts(uint64_t ts, uint32_t& sec, uint32_t& nsec);
-static char* format_ts(uint32_t sec, uint32_t nsec);
-
-template<class T, size_t N>
-CONSTEXPR size_t arrayLength(const T (&array)[N]) {
-    return N;
-}
-
-template<size_t N>
-void strcpy_safe(char (&dest)[N], const char* s) {
-    strncpy(dest, s, N-1);
-    dest[N-1] = 0;
-}
+static void bld_printf(const char* fmt, ...) PRINTF_ATTR(1,2);
 
 static void timeoutHandler(int) {
     printf("Timeout exceeded, exiting!\n");
@@ -62,10 +48,14 @@ static void timeoutHandler(int) {
 static int show_data = 0;
 static int unicast = 0;
 static int verbose = 0;
+static int quiet = 0;
+static int generate_report = 0;
 static std::vector<int> enabled_channels;
 static std::vector<ChannelType> channel_formats;
 static std::vector<int> events;
 static int channel_remap[NUM_BLD_CHANNELS];     // Maps payload channels to their actual channel number
+static Report* report;
+static char reportFile[256] = "report.json";
 
 // List of channel labels
 static std::vector<std::string> channel_labels = []() -> std::vector<std::string> {
@@ -95,6 +85,9 @@ static option long_opts[] = {
     {"pv", required_argument, NULL, 'b'},
     {"verbose", no_argument, &verbose, 'v'},
     {"address", required_argument, NULL, 'a'},
+    {"report", no_argument, NULL, 'r'},
+    {"output", required_argument, NULL, 'o'},
+    {"quiet", no_argument, NULL, 'q'},
 };
 
 static const char* help_text[] = {
@@ -112,6 +105,9 @@ static const char* help_text[] = {
     "PV that contains a description of the BLD payload",
     "Run in verbose mode, showing additional debugging info",
     "Multicast address",
+    "Run in report generation mode",
+    "File to place the generated report",
+    "Disable all non-critical logging",
 };
 
 STATIC_ASSERT(arrayLength(long_opts) == arrayLength(help_text));
@@ -121,6 +117,7 @@ int main(int argc, char *argv[]) {
     char buffer[MAXLINE];
 
     char mcastAddr[256] = "224.0.0.0";
+
     int port = DEFAULT_BLD_PORT, needsSevr = 0;
     int64_t version = -1, numPackets = INT64_MAX;
     uint64_t timeout = UINT64_MAX;
@@ -130,9 +127,10 @@ int main(int argc, char *argv[]) {
         channel_remap[i] = i;
 
     signal(SIGALRM, timeoutHandler);
+    signal(SIGINT, [](int) {cleanup();});
 
     int opt = 0, longind = 0;
-    while ((opt = getopt_long(argc, argv, "vuhdp:k:s:t:n:f:c:e:b:", long_opts, &longind)) != -1) {
+    while ((opt = getopt_long(argc, argv, "rqvuhdp:k:s:t:n:f:c:e:b:o:", long_opts, &longind)) != -1) {
         /* Handle long opts */
         if (opt == 0) {
             if (long_opts[longind].val != 0)
@@ -184,6 +182,16 @@ int main(int argc, char *argv[]) {
             break;
         case 'a':
             strcpy_safe(mcastAddr, optarg);
+            break;
+        case 'o':
+            strcpy_safe(reportFile, optarg);
+            break;
+        case 'r':
+            generate_report = 1;
+            report = new Report();
+            break;
+        case 'q':
+            quiet = 1;
             break;
         case '?':
             usage();
@@ -239,6 +247,10 @@ int main(int argc, char *argv[]) {
 
     const bool ignoreFirst = !events.empty() && std::find(events.begin(), events.end(), 0) == events.end();
 
+    const bool showData = show_data && !quiet && !report;
+
+    PacketValidator validator;
+
     while(1)
     {
         // Clear buffer so we can easily cast to our structure types without printing junk
@@ -250,9 +262,10 @@ int main(int argc, char *argv[]) {
         char * bufptr = buffer;
         socklen_t len = sizeof(cliaddr); //len is value/result
 
-        ssize_t n = recvfrom(sockfd, (char *)buffer, MAXLINE,
+        const ssize_t totalRead = recvfrom(sockfd, (char *)buffer, MAXLINE,
                                 MSG_WAITALL, ( struct sockaddr *) &cliaddr,
                                 &len);
+        auto n = totalRead;
         if (n < 0) {
             perror("recvfrom failed");
             exit(EXIT_FAILURE);
@@ -272,11 +285,19 @@ int main(int argc, char *argv[]) {
         // Packet accepted for display, cancel any pending timeouts
         alarm(0);
 
-        printf("====== new packet size %li ======\n", n);
+        bld_printf("====== new packet size %li ======\n", n);
 
         LOG_VERBOSE("Received size: %li\n", n);
 
-        const auto numChannels = (packSize - (sizeof(bldMulticastPacket_t) - sizeof(ptr->signals))) / CHANNEL_SIZE;
+        const auto numChannels = BLD_PACKET_NUM_CHANNELS(ptr, packSize);
+
+        PacketError packetError;
+        if ((packetError = validator.validate(ptr, packSize)) != PacketError::None) {
+            printf("Invalid packet received: %s, len=%lu\n", to_string(packetError).c_str(), packSize);
+            if (report)
+                report->report_packet_error(packetError, buffer, n);
+            continue;
+        }
 
         if (!ignoreFirst) {
             uint32_t sec, nsec;
@@ -287,26 +308,36 @@ int main(int argc, char *argv[]) {
             char tmbuf[64];
             strftime(tmbuf, sizeof(tmbuf), "%Y:%m:%d %H:%M:%S", tinfo);
 
-            printf("Num channels : %lu\n", numChannels);
-            printf("timeStamp    : 0x%016lX %u sec, %u nsec (%s)\n", ptr->timeStamp, sec, nsec, format_ts(sec, nsec));
-            printf("pulseID      : 0x%016lX\n", ptr->pulseID);
-            printf("severityMask : 0x%016lX\n", ptr->severityMask);
-            printf("version      : 0x%08X\n", ptr->version);
+            bld_printf("Num channels : %lu\n", numChannels);
+            bld_printf("timeStamp    : 0x%016lX %u sec, %u nsec (%s)\n", ptr->timeStamp, sec, nsec, format_ts(sec, nsec).c_str());
+            bld_printf("pulseID      : 0x%016lX\n", ptr->pulseID);
+            bld_printf("severityMask : 0x%016lX\n", ptr->severityMask);
+            bld_printf("version      : 0x%08X\n", ptr->version);
 
             // Display payload
-            if (show_data)
+            if (showData)
                 print_data(ptr->signals, numChannels, channel_formats, enabled_channels);
         }
 
         n -= len < sizeof(bldMulticastPacket_t) ? len : sizeof(bldMulticastPacket_t);
         LOG_VERBOSE("n is %li size of packet=%lu eventData=%lu\n", n, sizeof(bldMulticastPacket_t), sizeof(bldMulticastComplementaryPacket_t));
-        bufptr = bufptr + sizeof(bldMulticastPacket_t);
+        bufptr += sizeof(bldMulticastPacket_t);
         compptr = (bldMulticastComplementaryPacket_t *)bufptr;
 
         // Display additional events
-        int eventNum = 1;
+        int eventNum = 1, isError = 0;
         while (n > 0)
         {
+            // Validate event
+            auto compSize = n < sizeof(bldMulticastComplementaryPacket_t) ? n : sizeof(bldMulticastComplementaryPacket_t);
+            if ((packetError = validator.validate(compptr, compSize)) != PacketError::None) {
+                if (report)
+                    report->report_packet_error(packetError, buffer, totalRead);
+                printf("Invalid event received: %s, len=%lu\n", to_string(packetError).c_str(), compSize);
+                isError = 1;
+                break;
+            }
+
             // Skip the event if requested
             if (events.empty() || std::find(events.begin(), events.end(), eventNum) != events.end()) {
                 // Compute new timestamp and pulse ID
@@ -316,11 +347,11 @@ int main(int argc, char *argv[]) {
                 uint32_t sec, nsec;
                 extract_ts(newTS, sec, nsec);
 
-                printf("===> event %d\n", eventNum);
-                printf("Timestamp     : 0x%016lX %u sec, %u nsec (%s) delta 0x%X\n", newTS, sec, nsec, format_ts(sec, nsec), compptr->deltaTimeStamp);
-                printf("Pulse ID      : 0x%016lX delta 0x%X\n", newPulse, compptr->deltaPulseID);
-                printf("severity mask : 0x%016lX\n", compptr->severityMask);
-                if (show_data)
+                bld_printf("===> event %d\n", eventNum);
+                bld_printf("Timestamp     : 0x%016lX %u sec, %u nsec (%s) delta 0x%X\n", newTS, sec, nsec, format_ts(sec, nsec).c_str(), compptr->deltaTimeStamp);
+                bld_printf("Pulse ID      : 0x%016lX delta 0x%X\n", newPulse, compptr->deltaPulseID);
+                bld_printf("severity mask : 0x%016lX\n", compptr->severityMask);
+                if (showData)
                     print_data(compptr->signals, numChannels, channel_formats, enabled_channels);
             }
 
@@ -329,27 +360,34 @@ int main(int argc, char *argv[]) {
 
             LOG_VERBOSE("%li bytes remaining\n", n < 0 ? 0 : n);
             eventNum++;
-        } 
-        printf("====== Packet finished ======\n");
+        }
 
+        if (isError)
+            continue;
+
+        if (report)
+            report->report_packet_recv();
+
+        bld_printf("====== Packet finished ======\n");
     }
+
+    cleanup();
+
     return 0;
 }
 
-static int num_str_base(const char* str) {
-    if (str[0] == '0') {
-        switch(str[1]) {
-        case 'x':
-            return 16;
-        case 'b':
-            return 2;
-        case 'o':
-            return 8;
-        default:
-            return 10;
-        }
+/* Handle some cleanup. Write reports and whatnot */
+static void cleanup() {
+    if (!report)
+        return;
+    
+    std::ofstream stream(reportFile);
+    if (!stream.good()) {
+        printf("Error while writing report file %s!\n", reportFile);
+        return;
     }
-    return 10;
+    report->serialize(stream);
+    printf("Report saved to %s\n", reportFile);
 }
 
 static void usage() {
@@ -525,16 +563,17 @@ static void build_channel_list() {
     enabled_channels = chanList;
 }
 
-static void extract_ts(uint64_t ts, uint32_t& sec, uint32_t& nsec) {
-    nsec = ts & 0xFFFFFFFF;
-    sec = (ts>>32) & 0xFFFFFFFF;
-}
+// Printf helper to disable printing in certain scenarios
+// use printf/fprintf directly for things that should always be seen
+static void bld_printf(const char* fmt, ...) {
+    if ((quiet || report) && !verbose)
+        return;
 
-static char* format_ts(uint32_t sec, uint32_t nsec) {
-    time_t sect = sec;
-    auto tinfo = localtime(&sect);
-    
-    static char tmbuf[128] {};
-    strftime(tmbuf, sizeof(tmbuf), "%Y:%m:%d %H:%M:%S", tinfo);
-    return tmbuf;
+    char msg[65536];
+    va_list va;
+    va_start(va, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, va);
+    va_end(va);
+
+    fputs(msg, stdout);
 }
