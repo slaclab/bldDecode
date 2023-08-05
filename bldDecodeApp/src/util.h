@@ -24,6 +24,16 @@ void extract_ts(uint64_t ts, uint32_t& sec, uint32_t& nsec);
 std::string format_ts(uint32_t sec, uint32_t nsec);
 
 /**
+ * \param mask Severity mask
+ * \param channel Channel index
+ * \returns Severity
+ */
+int get_sevr(uint64_t mask, int channel);
+
+/** Returns severity string */
+const char* sevr_to_string(int sevr);
+
+/**
  * Determine numerical base of the string.
  * Ex: 0x1 => 16, 0b01 => 2, 0o8 => 8
  */

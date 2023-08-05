@@ -35,3 +35,20 @@ int num_str_base(const char* str) {
     }
     return 10;
 }
+
+int get_sevr(uint64_t mask, int channel) {
+    return (mask >> (2*channel)) & 0x3;
+}
+
+const char* sevr_to_string(int sevr) {
+    switch(sevr) {
+    case 0:
+        return "None";
+    case 1:
+        return "Minor";
+    case 2:
+        return "Major";
+    default:
+        return "Invalid";
+    }
+}

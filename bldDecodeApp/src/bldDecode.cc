@@ -31,7 +31,7 @@ using ChannelType = pvxs::TypeCode::code_t;
 
 static void cleanup();
 
-static void print_data(uint32_t* data, size_t num, const std::vector<ChannelType>& formats, const std::vector<int>& channels);
+static void print_data(uint32_t* data, size_t num, const std::vector<ChannelType>& formats, const std::vector<int>& channels, uint64_t);
 static void usage();
 static std::vector<ChannelType> parse_channel_formats(const char* str);
 static std::vector<int> parse_channels(const char* str);
@@ -316,7 +316,7 @@ int main(int argc, char *argv[]) {
 
             // Display payload
             if (showData)
-                print_data(ptr->signals, numChannels, channel_formats, enabled_channels);
+                print_data(ptr->signals, numChannels, channel_formats, enabled_channels, ptr->severityMask);
         }
 
         n -= len < sizeof(bldMulticastPacket_t) ? len : sizeof(bldMulticastPacket_t);
@@ -352,7 +352,7 @@ int main(int argc, char *argv[]) {
                 bld_printf("Pulse ID      : 0x%016lX delta 0x%X\n", newPulse, compptr->deltaPulseID);
                 bld_printf("severity mask : 0x%016lX\n", compptr->severityMask);
                 if (showData)
-                    print_data(compptr->signals, numChannels, channel_formats, enabled_channels);
+                    print_data(compptr->signals, numChannels, channel_formats, enabled_channels, compptr->severityMask);
             }
 
             n -= sizeof(bldMulticastComplementaryPacket_t);
@@ -404,26 +404,27 @@ static void usage() {
     }
 }
 
-static void print_single_channel(int index, uint32_t data, pvxs::TypeCode format) {
+static void print_single_channel(int index, uint32_t data, pvxs::TypeCode format, uint64_t sevrMask) {
     printf("  %s raw=0x%08X, ", channel_labels[index].c_str(), data);
     switch(format.code) {
     case pvxs::TypeCode::Float32:
-        printf("float=%g\n", *reinterpret_cast<float*>(&data));
+        printf("float=%g", *reinterpret_cast<float*>(&data));
         break;
     case pvxs::TypeCode::Int32:
-        printf("int32=%d\n", *reinterpret_cast<int*>(&data));
+        printf("int32=%d", *reinterpret_cast<int*>(&data));
         break;
 	case pvxs::TypeCode::UInt32A:
     case pvxs::TypeCode::UInt32:
-        printf("uint32=%u\n", data);
+        printf("uint32=%u", data);
         break;
     default:
         assert(0);
         break;
     }
+    printf(", sevr=%s\n", sevr_to_string(get_sevr(sevrMask, index)));
 }
 
-static void print_data(uint32_t* data, size_t num, const std::vector<pvxs::TypeCode::code_t>& formats, const std::vector<int>& channels) {
+static void print_data(uint32_t* data, size_t num, const std::vector<pvxs::TypeCode::code_t>& formats, const std::vector<int>& channels, uint64_t sevrMask) {
     printf("Data payload:\n");
 
     // A bit ugly, but we need to pad out the channel formats if num > formats.size()
@@ -433,13 +434,13 @@ static void print_data(uint32_t* data, size_t num, const std::vector<pvxs::TypeC
 
     if (channels.empty()) {
         for (size_t i = 0; i < num; ++i)
-            print_single_channel(i, data[i], actualFormats[i]);
+            print_single_channel(i, data[i], actualFormats[i], sevrMask);
     }
     else {
         for (auto chan : channels) {
             if (size_t(chan) >= num)
                 continue; // Skip anything we don't have
-            print_single_channel(chan, data[chan], actualFormats[chan]);
+            print_single_channel(chan, data[chan], actualFormats[chan], sevrMask);
         }
     }
 }
