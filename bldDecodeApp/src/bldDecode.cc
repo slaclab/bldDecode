@@ -56,6 +56,7 @@ static std::vector<int> events;
 static int channel_remap[NUM_BLD_CHANNELS];     // Maps payload channels to their actual channel number
 static Report* report;
 static char reportFile[256] = "report.json";
+static int num_channels = 0;
 
 // List of channel labels
 static std::vector<std::string> channel_labels = []() -> std::vector<std::string> {
@@ -289,7 +290,7 @@ int main(int argc, char *argv[]) {
 
         LOG_VERBOSE("Received size: %li\n", n);
 
-        const auto numChannels = BLD_PACKET_NUM_CHANNELS(ptr, packSize);
+        const size_t payloadSize = sizeof(uint32_t) * num_channels;
 
         PacketError packetError;
         if ((packetError = validator.validate(ptr, packSize)) != PacketError::None) {
@@ -308,7 +309,7 @@ int main(int argc, char *argv[]) {
             char tmbuf[64];
             strftime(tmbuf, sizeof(tmbuf), "%Y:%m:%d %H:%M:%S", tinfo);
 
-            bld_printf("Num channels : %lu\n", numChannels);
+            bld_printf("Num channels : %d\n", num_channels);
             bld_printf("timeStamp    : 0x%016lX %u sec, %u nsec (%s)\n", ptr->timeStamp, sec, nsec, format_ts(sec, nsec).c_str());
             bld_printf("pulseID      : 0x%016lX\n", ptr->pulseID);
             bld_printf("severityMask : 0x%016lX\n", ptr->severityMask);
@@ -316,12 +317,13 @@ int main(int argc, char *argv[]) {
 
             // Display payload
             if (showData)
-                print_data(ptr->signals, numChannels, channel_formats, enabled_channels, ptr->severityMask);
+                print_data(ptr->signals, num_channels, channel_formats, enabled_channels, ptr->severityMask);
         }
 
-        n -= len < sizeof(bldMulticastPacket_t) ? len : sizeof(bldMulticastPacket_t);
+        n -= payloadSize + bldMulticastPacketHeaderSize;
+
         LOG_VERBOSE("n is %li size of packet=%lu eventData=%lu\n", n, sizeof(bldMulticastPacket_t), sizeof(bldMulticastComplementaryPacket_t));
-        bufptr += sizeof(bldMulticastPacket_t);
+        bufptr += payloadSize + bldMulticastPacketHeaderSize;
         compptr = (bldMulticastComplementaryPacket_t *)bufptr;
 
         // Display additional events
@@ -352,11 +354,11 @@ int main(int argc, char *argv[]) {
                 bld_printf("Pulse ID      : 0x%016lX delta 0x%X\n", newPulse, compptr->deltaPulseID);
                 bld_printf("severity mask : 0x%016lX\n", compptr->severityMask);
                 if (showData)
-                    print_data(compptr->signals, numChannels, channel_formats, enabled_channels, compptr->severityMask);
+                    print_data(compptr->signals, num_channels, channel_formats, enabled_channels, compptr->severityMask);
             }
 
-            n -= sizeof(bldMulticastComplementaryPacket_t);
-            compptr = (bldMulticastComplementaryPacket_t *) (bufptr + sizeof(bldMulticastComplementaryPacket_t));
+            n -= bldMulticastComplementaryPacketHeaderSize + payloadSize;
+            compptr = (bldMulticastComplementaryPacket_t *) (bufptr + bldMulticastComplementaryPacketHeaderSize + payloadSize);
 
             LOG_VERBOSE("%li bytes remaining\n", n < 0 ? 0 : n);
             eventNum++;
@@ -417,6 +419,10 @@ static void print_single_channel(int index, uint32_t data, pvxs::TypeCode format
     case pvxs::TypeCode::UInt32:
         printf("uint32=%u", data);
         break;
+    case pvxs::TypeCode::Int64:
+    case pvxs::TypeCode::UInt64:
+        printf("int64 not supported");
+        break;
     default:
         assert(0);
         break;
@@ -467,6 +473,7 @@ static std::vector<ChannelType> parse_channel_formats(const char* str) {
             return {};
         }
     }
+    num_channels = fmt.size();
     return fmt;
 }
 
@@ -531,24 +538,18 @@ static std::vector<ChannelType> read_channel_formats(const char* str) {
     channel_labels.clear();
 
     std::vector<ChannelType> format;
-    for (int i = 0, chi = 0; i < NUM_BLD_CHANNELS; ++i) {
-        char signalName[128];
-        snprintf(signalName, sizeof(signalName), "signal%02d", i);
-        const auto v = structure[signalName];
-        LOG_VERBOSE("%s: valid=%d isFloat=%d\n", signalName, v.valid(), v.type().code == TypeCode::Float32);
-        if (v.valid()) {
-            format.push_back(v.type().code);
+    int i = 0, chi = 0;
+    for (auto ch : structure.ichildren()) {
+        format.push_back(ch.type().code);
             
-            // Generate label for display
-            char ch[128];
-            snprintf(ch, sizeof(ch), "ch%02d", i);
-            channel_labels.push_back(ch);
+        // Store label for display
+        channel_labels.push_back(structure.nameOf(ch));
 
-            // Store off remap
-            channel_remap[i] = chi++;
-        }
+        // Store off remap
+        channel_remap[i] = chi++;
+        ++i;
     }
-
+    num_channels = i;
     return format;
 }
 
