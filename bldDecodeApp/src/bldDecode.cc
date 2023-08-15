@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, [](int) {cleanup(); exit(0);});
 
     int opt = 0, longind = 0;
-    while ((opt = getopt_long(argc, argv, "rqvuhdp:k:s:t:n:f:c:e:b:o:", long_opts, &longind)) != -1) {
+    while ((opt = getopt_long(argc, argv, "rqvuhda:p:k:s:t:n:f:c:e:b:o:", long_opts, &longind)) != -1) {
         /* Handle long opts */
         if (opt == 0) {
             if (long_opts[longind].val != 0)
