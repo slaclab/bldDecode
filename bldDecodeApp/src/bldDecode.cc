@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
         channel_remap[i] = i;
 
     signal(SIGALRM, timeoutHandler);
-    signal(SIGINT, [](int) {cleanup();});
+    signal(SIGINT, [](int) {cleanup(); exit(0);});
 
     int opt = 0, longind = 0;
     while ((opt = getopt_long(argc, argv, "rqvuhdp:k:s:t:n:f:c:e:b:o:", long_opts, &longind)) != -1) {
