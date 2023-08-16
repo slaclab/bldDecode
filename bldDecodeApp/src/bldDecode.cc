@@ -324,14 +324,15 @@ int main(int argc, char *argv[]) {
 
         LOG_VERBOSE("n is %li size of packet=%lu eventData=%lu\n", n, sizeof(bldMulticastPacket_t), sizeof(bldMulticastComplementaryPacket_t));
         bufptr += payloadSize + bldMulticastPacketHeaderSize;
-        compptr = (bldMulticastComplementaryPacket_t *)bufptr;
-
+        
         // Display additional events
         int eventNum = 1, isError = 0;
         while (n > 0)
         {
+            compptr = (bldMulticastComplementaryPacket_t*)(bufptr);
+         
             // Validate event
-            auto compSize = n < sizeof(bldMulticastComplementaryPacket_t) ? n : sizeof(bldMulticastComplementaryPacket_t);
+            auto compSize = bldMulticastComplementaryPacketHeaderSize + payloadSize;
             if ((packetError = validator.validate(compptr, compSize)) != PacketError::None) {
                 if (report)
                     report->report_packet_error(packetError, buffer, totalRead);
@@ -357,8 +358,8 @@ int main(int argc, char *argv[]) {
                     print_data(compptr->signals, num_channels, channel_formats, enabled_channels, compptr->severityMask);
             }
 
-            n -= bldMulticastComplementaryPacketHeaderSize + payloadSize;
-            compptr = (bldMulticastComplementaryPacket_t *) (bufptr + bldMulticastComplementaryPacketHeaderSize + payloadSize);
+            n -= compSize;
+            bufptr += compSize;
 
             LOG_VERBOSE("%li bytes remaining\n", n < 0 ? 0 : n);
             eventNum++;
