@@ -32,7 +32,7 @@ using ChannelType = pvxs::TypeCode::code_t;
 static void cleanup();
 
 static void print_data(uint32_t* data, size_t num, const std::vector<ChannelType>& formats, const std::vector<int>& channels, uint64_t);
-static void usage();
+static void usage(const char* argv0);
 static std::vector<ChannelType> parse_channel_formats(const char* str);
 static std::vector<int> parse_channels(const char* str);
 static std::vector<int> parse_events(const char* str);
@@ -96,13 +96,13 @@ static const char* help_text[] = {
     "Display event data",
     "Filter packets by this version",
     "Filter packets by this severity mask",
-    "Timeout to receive packets",
+    "Timeout to receive packets, in seconds",
     "Number of packets to receive before exiting",
     "Data format (i.e. 'f,u,i,f' for float, uint32, int32, float)",
     "Receive packets as unicast too",
-    "Channels to display, comma separated list",
+    "Channels to display (i.e. '1,2,5' will display channels 1, 2 and 5)",
     "Display this help text",
-    "Event numbers to display",
+    "Event indices to display (i.e. '0,1,3' will display events 0, 1 and 3)",
     "PV that contains a description of the BLD payload",
     "Run in verbose mode, showing additional debugging info",
     "Multicast address",
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
             numPackets = strtoull(optarg, NULL, num_str_base(optarg));
             break;
         case 'h':
-            usage();
+            usage(argv[0]);
             exit(0);
         case 'f':
             channel_formats = parse_channel_formats(optarg);
@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
             quiet = 1;
             break;
         case '?':
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
             break;
         }
@@ -392,8 +392,8 @@ static void cleanup() {
     printf("Report saved to %s\n", reportFile);
 }
 
-static void usage() {
-    printf("USAGE: bldDecode [ARGS]\n");
+static void usage(const char* argv0) {
+    printf("USAGE: %s [ARGS]\n", argv0);
     printf("Options:\n");
     for (size_t i = 0; i < arrayLength(long_opts); ++i) {
         char buf[512];
@@ -404,6 +404,13 @@ static void usage() {
             long_opts[i].has_arg == no_argument ? "" : "=<arg>");
         printf("%-30s %s\n", buf, help_text[i]);
     }
+    printf("\nUsage examples:\n");
+    printf("\n %s -d -b TST:SYS2:4:BLD_PAYLOAD\n    Display BLD packets and data payload\n", argv0);
+    printf("\n %s -b TST:SYS2:4:BLD_PAYLOAD -p 3500 -d -c \"0, 3\"\n    Display BLD packets from port 3500 and the data payload for channel 0 and 3\n", argv0);
+    printf("\n %s -b TST:SYS2:4:BLD_PAYLOAD -e \"0, 3\" -d\n    Display only event 0 and 3 and their associated data\n", argv0);
+    printf("\n %s -b TST:SYS2:4:BLD_PAYLOAD -n 1\n    Display basic info about one BLD packet and exit\n", argv0);
+    printf("\n %s -b TST:SYS2:4:BLD_PAYLOAD -d -a 224.0.0.0 -e 0 -n 10 -v 0x10\n    Display event 0's data payload for multicast BLD packets with the version 0x10, and exit after printing 10\n", argv0);
+    puts("");
 }
 
 static void print_single_channel(int index, uint32_t data, pvxs::TypeCode format, uint64_t sevrMask) {
