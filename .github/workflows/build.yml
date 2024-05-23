@@ -1,0 +1,78 @@
+# .github/workflows/ci-scripts-build.yml for use with EPICS Base ci-scripts
+# (see: https://github.com/epics-base/ci-scripts)
+
+# This is YAML - indentation levels are crucial
+
+# Set the 'name:' properties to values that work for you (MYMODULE)
+
+name: bldDecode
+
+# Trigger on pushes and PRs to any branch, but ignore docs
+on:
+  push:
+    paths-ignore:
+      - 'docs/*'
+      - '**/*.html'
+      - '**/*.md'
+  pull_request:
+
+env:
+  SETUP_PATH: .ci-local:.ci
+  # For the sequencer on Linux/Windows/MacOS
+  APT: re2c
+  CHOCO: re2c
+  BREW: re2c
+  # This is where we define our dependencies in CI
+  MODULES: pvxs
+  PVXS: master
+
+jobs:
+  build-base:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # Set environment variables from matrix parameters
+    env:
+      CMP: ${{ matrix.cmp }}
+      BCFG: ${{ matrix.configuration }}
+      EXTRA: ${{ matrix.extra }}
+      TEST: ${{ matrix.test }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Job names also name artifacts, character limitations apply
+        # Ubuntu 22.04:
+        #   clang, clang-13, clang-14, clang-15 (clang=clang-14)
+        #   gcc, gcc-9, gcc-10, gcc-12, gcc-13 (gcc=gcc-11)
+        include:
+          - os: ubuntu-22.04
+            cmp: gcc
+            configuration: static
+            extra: "CMD_CXXFLAGS=-std=c++11"
+            name: "Ub-22 gcc-11 C++11, static"
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Automatic core dumper analysis
+      uses: mdavidsaver/ci-core-dumper@master
+
+    - name: Prepare and compile dependencies
+      run: python .ci/cue.py prepare
+
+    - name: Build main module
+      run: python .ci/cue.py build
+
+    - name: Run main module tests
+      run: python .ci/cue.py test
+
+    # Resulting test files will be uploaded and attached to this run
+    - name: Upload tapfiles Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: tapfiles ${{ matrix.name }}
+        path: '**/O.*/*.tap'
+
+    - name: Collect and show test results
+      run: python .ci/cue.py test-results
