@@ -1,9 +1,15 @@
-/**
- * Simple BLD test sender. Used to test the wireshark plugin impl
- * @author Jeremy Lorelli
- * @date July 25th, 2023
- */
-
+//////////////////////////////////////////////////////////////////////////////
+// This file is part of 'bldDecode'.
+// It is subject to the license terms in the LICENSE.txt file found in the 
+// top-level directory of this distribution and at: 
+//    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html. 
+// No part of 'bldDecode', including this file, 
+// may be copied, modified, propagated, or distributed except according to 
+// the terms contained in the LICENSE.txt file.
+//////////////////////////////////////////////////////////////////////////////
+// Description: Sends BLD packets to a specific address for testing purposes
+//  this was originally written to test the BLD wireshark plugin.
+//////////////////////////////////////////////////////////////////////////////
 #include <time.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -49,7 +55,7 @@ struct timespec time_to_ts(double seconds) {
 int main(int argc, char** argv) {
     
     int port = DEFAULT_BLD_PORT;
-    uint64_t sevr = 0, pulse = 0, beamFreq = 1000;
+    uint64_t sevr = 0, beamFreq = 1000;
     uint32_t ver = 0, chans = 0, comp = 0;
     double interval = 1;
     char ip[128];

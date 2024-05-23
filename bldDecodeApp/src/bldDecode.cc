@@ -1,4 +1,12 @@
-
+//////////////////////////////////////////////////////////////////////////////
+// This file is part of 'bldDecode'.
+// It is subject to the license terms in the LICENSE.txt file found in the 
+// top-level directory of this distribution and at: 
+//    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html. 
+// No part of 'bldDecode', including this file, 
+// may be copied, modified, propagated, or distributed except according to 
+// the terms contained in the LICENSE.txt file.
+//////////////////////////////////////////////////////////////////////////////
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -38,7 +46,7 @@ static std::vector<int> parse_channels(const char* str);
 static std::vector<int> parse_events(const char* str);
 static std::vector<ChannelType> read_channel_formats(const char* str);
 static void build_channel_list();
-static void bld_printf(const char* fmt, ...) PRINTF_ATTR(1,2);
+static void bld_printf(const char* fmt, ...) EPICS_PRINTF_STYLE(1,2);
 
 static void timeoutHandler(int) {
     printf("Timeout exceeded, exiting!\n");

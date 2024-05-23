@@ -1,9 +1,18 @@
-
+//////////////////////////////////////////////////////////////////////////////
+// This file is part of 'bldDecode'.
+// It is subject to the license terms in the LICENSE.txt file found in the 
+// top-level directory of this distribution and at: 
+//    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html. 
+// No part of 'bldDecode', including this file, 
+// may be copied, modified, propagated, or distributed except according to 
+// the terms contained in the LICENSE.txt file.
+//////////////////////////////////////////////////////////////////////////////
 #pragma once
 
 #include <cstdint>
 #include <string>
 
+#include <compilerSpecific.h>
 #include <epicsTime.h>
 
 #define CHANNEL_SIZE 4
@@ -12,12 +21,6 @@
 #define CONSTEXPR constexpr
 #else
 #define CONSTEXPR static const
-#endif
-
-#if defined(__GNUC__) || defined(__clang__)
-#define PRINTF_ATTR(x, y) __attribute__((format(printf, x, y)))
-#else
-#define PRINTF_ATTR(x,y)
 #endif
 
 void extract_ts(uint64_t ts, uint32_t& sec, uint32_t& nsec);
