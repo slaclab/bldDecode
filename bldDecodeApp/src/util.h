@@ -17,12 +17,6 @@
 
 #define CHANNEL_SIZE 4
 
-#if __cplusplus >= 201103L
-#define CONSTEXPR constexpr
-#else
-#define CONSTEXPR static const
-#endif
-
 void extract_ts(uint64_t ts, uint32_t& sec, uint32_t& nsec);
 std::string format_ts(uint32_t sec, uint32_t nsec);
 
@@ -51,11 +45,18 @@ inline epicsTimeStamp epics_from_bld(uint64_t ts) {
     return s;
 }
 
+/**
+ * \brief Returns the length of an array. Only works for arrays that the compiler knows the length of at compile time.
+ */
 template<class T, size_t N>
 inline constexpr size_t arrayLength(const T (&array)[N]) {
     return N;
 }
 
+/**
+ * \brief Safer version of strcpy with inferred destination length. Ensures dest is NULL terminated, even if truncation occurs.
+ * prefer this over strncpy!
+ */
 template<size_t N>
 inline void strcpy_safe(char (&dest)[N], const char* s) {
     strncpy(dest, s, N-1);
