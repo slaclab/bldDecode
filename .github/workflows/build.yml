@@ -25,6 +25,7 @@ env:
   # This is where we define our dependencies in CI
   MODULES: pvxs
   PVXS: master
+  PVXS_REPOOWNER: mdavidsaver
 
 jobs:
   build-base:
