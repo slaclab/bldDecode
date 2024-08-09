@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
     uint64_t timeout = UINT64_MAX;
     uint64_t sevrMask = 0;
 
-    for (int i = 0; i < arrayLength(channel_remap); ++i)
+    for (size_t i = 0; i < arrayLength(channel_remap); ++i)
         channel_remap[i] = i;
 
     signal(SIGALRM, timeoutHandler);
@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        size_t packSize = n < sizeof(bldMulticastPacket_t) ? n : sizeof(bldMulticastPacket_t);
+        size_t packSize = size_t(n) < sizeof(bldMulticastPacket_t) ? n : sizeof(bldMulticastPacket_t);
         ptr = (bldMulticastPacket_t *)buffer;
 
         // Check if we need to skip this packet
