@@ -30,10 +30,6 @@
 
 -include $(TOP)/RELEASE_SITE
 
-# EPICS_BASE should appear last so earlier modules can override stuff:
-EPICS_BASE = /media/BigDrive/Projects/pcds-epics/base
-SUPPORT = /media/BigDrive/Projects/pcds-epics/modules
-
 # Set RULES here if you want to use build rules from somewhere
 # other than EPICS_BASE:
 #RULES = $(MODULES)/build-rules
