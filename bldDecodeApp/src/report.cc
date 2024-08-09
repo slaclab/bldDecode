@@ -21,7 +21,7 @@ std::string ReportEntry::to_string() const {
 
     std::string str;
     str.resize(m_dataLen * 4 + 1);
-    for (int i = 0; i < m_dataLen;) {
+    for (size_t i = 0; i < m_dataLen;) {
         auto a = i < m_dataLen ? (unsigned char)data[i++] : 0;
         auto b = i < m_dataLen ? (unsigned char)data[i++] : 0;
         auto c = i < m_dataLen ? (unsigned char)data[i++] : 0;
