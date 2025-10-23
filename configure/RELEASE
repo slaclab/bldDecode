@@ -34,7 +34,7 @@
 # other than EPICS_BASE:
 #RULES = $(MODULES)/build-rules
 
-PVXS_MODULE_VERSION=R1.2.0-0.1.0
+PVXS_MODULE_VERSION=R1.2.2-0.2.0
 PVXS=$(EPICS_MODULES)/pvxs/$(PVXS_MODULE_VERSION)
 
 # Override in RELEASE.local please!
